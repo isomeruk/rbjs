@@ -1,0 +1,5 @@
+#!/bin/bash
+
+echo "Starting dummy 60s... $0";
+sleep 60;
+echo 'END dummy';
