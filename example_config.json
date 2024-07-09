@@ -1,0 +1,7 @@
+{
+    "streamers": [],
+    "checkInterval": 120,
+
+    "recordCmd": "yt-dlp",
+    "recordCmdArgs": ["-o", "/data/videos/%(title)s.%(ext)s", "--quiet"]
+}

@@ -1,5 +1,0 @@
-{
-    "streamers": [],
-    "checkInterval": 120,
-    "recordCmd": "./dummy-youtube-dl <streamer>"
-}

@@ -26,9 +26,9 @@ class Bot {
             this.running = false;
         }
 
-        // this.processes.forEach(([streamer, proc]) => {
-        //     proc.kill('SIGINT');
-        // });
+        Object.keys(this.streamers).filter(name => Boolean(this.streamers[name].proc)).forEach(name => {
+            this.streamers[name].proc.kill('SIGINT');
+        })
 
         this.logger.info('Successfully stopped');
         process.exit(0);
@@ -64,7 +64,7 @@ class Bot {
         streamers.push(name);
         this.config.streamers = streamers;
 
-        fs.writeFileSync('config.json', JSON.stringify(this.config, null, 4));
+        fs.writeFileSync('/data/config.json', JSON.stringify(this.config, null, 4));
 
         if (this.running) {
             this.run();
@@ -85,13 +85,62 @@ class Bot {
 
         this.config.streamers = streamers.filter(streamer => streamer != name);
 
-        fs.writeFileSync('config.json', JSON.stringify(this.config, null, 4));
+        fs.writeFileSync('/data/config.json', JSON.stringify(this.config, null, 4));
 
         return true;
     }
 
+    pauseStreamer(name) {
+        if (!name) {
+            throw new Error('No streamer parameter supplied')
+        }
+
+        const streamers = this.config.streamers || [];
+
+        if (!streamers.includes(name) && !Object.keys(this.streamers).includes(name)) {
+            throw new Error('Streamer is not in streamers list')
+        }
+
+        if (this.streamers[name].proc) {
+            this.streamers[name].proc.kill('SIGINT');
+        }
+
+        this.logger.info('Pausing streams for ' + name);
+        this.streamers[name].paused = true;
+
+        return true;
+    }
+
+    resumeStreamer(name) {
+        if (!name) {
+            throw new Error('No streamer parameter supplied')
+        }
+
+        const streamers = this.config.streamers || [];
+
+        if (!streamers.includes(name) && !Object.keys(this.streamers).includes(name)) {
+            throw new Error('Streamer is not in streamers list')
+        }
+
+        this.logger.info('Resuming streams for ' + name);
+        this.streamers[name].paused = false;
+
+        if (this.running) {
+            this.run();
+        }
+
+        return true;
+    }
+
+    checkConfigExists() {
+        if (!fs.existsSync('/data/config.json')) {
+            this.logger.info(`Config file not found. Importing example config`);
+            fs.copyFileSync('example_config.json', '/data/config.json');
+        }
+    }
+
     reloadConfig() {
-        const config = JSON.parse(fs.readFileSync('config.json', 'utf-8'));
+        const config = JSON.parse(fs.readFileSync('/data/config.json', 'utf-8'));
         if (JSON.stringify(config) != JSON.stringify(this.config)) {
             this.logger.info(`Config reloaded: ${JSON.stringify(config)}`);
             this.config = config;
@@ -114,12 +163,15 @@ class Bot {
         const info = await this.getInfo(name);
         this.streamers[name].meta = info;
 
+        if (this.streamers[name].paused) {
+            return;
+        }
+
         if (info['room_status'] === 'public' && !this.streamers[name].recording) {
             this.logger.info(`Recording starting -- ${name}`);
             const args = [
+                ...this.config.recordCmdArgs || [],
                 `https://chaturbate.com/${name}/`,
-                // '--config-location',
-                // this.config.youtube_dl_config
             ];
 
             const childProcess = spawn(this.config.recordCmd, args, {
@@ -168,6 +220,7 @@ class Bot {
     async run() {
         this.running = true;
         this.timeout = false;
+        this.checkConfigExists();
         this.reloadConfig();
 
         // Update internal streamers list
@@ -186,6 +239,7 @@ class Bot {
                 this.logger.info(`New streamer ${streamer}`);
                 this.streamers[streamer] = {
                     recording: false,
+                    paused: false,
                     proc: null,
                     meta: false,
                 }
@@ -280,6 +334,18 @@ app.get('/api/add', (req, res) => {
 app.get('/api/remove', (req, res) => {
     const streamer = req && req.query && req.query.streamer;
     const response = apiResponse(() => bot.removeStreamer(streamer) ? 'OK' : 'FAIL')
+    res.json(response);
+})
+
+app.get('/api/pauseStreamer', (req, res) => {
+    const streamer = req && req.query && req.query.streamer;
+    const response = apiResponse(() => bot.pauseStreamer(streamer) ? 'OK' : 'FAIL')
+    res.json(response);
+})
+
+app.get('/api/resumeStreamer', (req, res) => {
+    const streamer = req && req.query && req.query.streamer;
+    const response = apiResponse(() => bot.resumeStreamer(streamer) ? 'OK' : 'FAIL')
     res.json(response);
 })
 
